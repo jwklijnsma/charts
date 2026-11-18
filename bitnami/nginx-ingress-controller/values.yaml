@@ -20,7 +20,9 @@ global:
   ##
   security:
     ## @param global.security.allowInsecureImages Allows skipping image verification
-    allowInsecureImages: false
+    ## true in this fork: the controller image is the patched ghcr.io/jwklijnsma build,
+    ## not a Bitnami image, and Bitnami's common chart refuses to render it otherwise.
+    allowInsecureImages: true
   ## Compatibility adaptations for Kubernetes platforms
   ##
   compatibility:
@@ -58,8 +60,12 @@ extraDeploy: []
 clusterDomain: cluster.local
 ## @section Nginx Ingress Controller parameters
 
-## Bitnami NGINX Ingress controller image version
-## ref: https://hub.docker.com/r/bitnami/nginx-ingress-controller/tags/
+## Patched ingress-nginx controller image (jwklijnsma fork).
+## Built from https://github.com/jwklijnsma/ingress-nginx (branch patched/v1.15.1-nginx-1.31.9):
+## upstream controller v1.15.1 + NGINX 1.31.9 with the OpenResty 1.31.8.1 patch set.
+## The Bitnami image (docker.io/bitnami/nginx-ingress-controller) is no longer updated and
+## ships NGINX 1.27.1, which is affected by every 2026 NGINX CVE (incl. CVE-2026-123007).
+## Pin `digest` to the value from the fork's "Fork images" workflow summary.
 ## @param image.registry [default: REGISTRY_NAME] Nginx Ingress Controller image registry
 ## @param image.repository [default: REPOSITORY_NAME/nginx-ingress-controller] Nginx Ingress Controller image repository
 ## @skip image.tag Nginx Ingress Controller image tag (immutable tags are recommended)
@@ -68,9 +74,9 @@ clusterDomain: cluster.local
 ## @param image.pullSecrets Specify docker-registry secret names as an array
 ##
 image:
-  registry: docker.io
-  repository: bitnami/nginx-ingress-controller
-  tag: 1.13.0-debian-12-r1
+  registry: ghcr.io
+  repository: jwklijnsma/ingress-nginx/controller
+  tag: v1.15.1-jwk.1
   digest: ""
   ## Specify a imagePullPolicy
   ## ref: https://kubernetes.io/docs/concepts/containers/images/#pre-pulled-images
@@ -275,7 +281,8 @@ podSecurityContext:
   fsGroupChangePolicy: Always
   sysctls: []
   supplementalGroups: []
-  fsGroup: 1001
+  ## upstream ingress-nginx image: files owned by www-data (uid 101 / gid 82)
+  fsGroup: 82
 ## Controller containers' Security Context (only main container)
 ## ref: https://kubernetes.io/docs/tasks/configure-pod-container/security-context/#set-the-security-context-for-a-container
 ## @param containerSecurityContext.enabled Enable Controller containers' Security Context
@@ -293,8 +300,8 @@ containerSecurityContext:
   enabled: true
   allowPrivilegeEscalation: false
   seLinuxOptions: {}
-  runAsUser: 1001
-  runAsGroup: 1001
+  runAsUser: 101
+  runAsGroup: 82
   readOnlyRootFilesystem: true
   capabilities:
     drop: ["ALL"]
@@ -516,8 +523,12 @@ podSecurityPolicy:
 ##
 defaultBackend:
   ## @param defaultBackend.enabled Enable a default backend based on NGINX
+  ## Disabled in this fork: the default image (bitnami/nginx 1.29.0, no longer updated) is
+  ## itself affected by the 2026 NGINX CVEs. With it off, the controller answers unmatched
+  ## requests with its own built-in 404 (same as the upstream ingress-nginx chart default).
+  ## Only enable it again with a patched NGINX image (>= 1.30.7 / 1.31.9).
   ##
-  enabled: true
+  enabled: false
   ## @param defaultBackend.automountServiceAccountToken Mount Service Account token in pod
   ##
   automountServiceAccountToken: true
